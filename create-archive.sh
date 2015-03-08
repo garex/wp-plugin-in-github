@@ -27,7 +27,7 @@ cd - > /dev/null
 # Readme converter
 README_CONVERTER=$SCRIPT_DIR/readme-converter.sh
 
-README_MD=`find . -iname "readme.md"`
+README_MD=`git ls-files | grep -i readme.md`
 
 # lifted this code from http://www.shelldorado.com/goodcoding/cmdargs.html
 while [ $# -gt 0 ]
@@ -47,10 +47,11 @@ done
 LATEST_TAG=`git describe --abbrev=0`
 if [ $? -eq 0 ]; then
     echo "[Info] The latest tag is : $LATEST_TAG"
-    LATEST_TAG="-$LATEST_TAG"
+    LATEST_TAG_VERSION="-$LATEST_TAG"
 else
     echo "[Info] No latest tag found"
     LATEST_TAG=""
+    LATEST_TAG_VERSION=""
 fi
 
 # Convert markdown in readme.md file to WordPress readme.txt format
@@ -59,11 +60,20 @@ if [ -f "$README_MD" ]; then
     $README_CONVERTER $README_MD readme.txt to-wp
 fi
 
-git archive --format zip --prefix $PLUGIN_NAME/ --output $OUTPUT_DIR/${PLUGIN_NAME}${LATEST_TAG}.zip master
+OUTPUT_FILE="$OUTPUT_DIR/${PLUGIN_NAME}${LATEST_TAG_VERSION}.zip"
 
-zip -d $OUTPUT_DIR/${PLUGIN_NAME}${LATEST_TAG}.zip ${PLUGIN_NAME}/README.md
+git archive --format zip --prefix $PLUGIN_NAME/ --output $OUTPUT_FILE $LATEST_TAG
+
+if [ -f composer.json ]; then
+	composer install --no-dev
+fi
+
+zip -d $OUTPUT_FILE ${PLUGIN_NAME}/README.md
 cd ../
-zip $OUTPUT_DIR/${PLUGIN_NAME}${LATEST_TAG}.zip ${PLUGIN_NAME}/readme.txt
+zip $OUTPUT_FILE ${PLUGIN_NAME}/readme.txt
 rm ${PLUGIN_NAME}/readme.txt
+if [ -f ${PLUGIN_NAME}/composer.json ]; then
+	zip -rq $OUTPUT_FILE ${PLUGIN_NAME}/vendor -x '*.git*' -x '*.hg*'
+fi
 
-echo "[Info] Zip file created at $OUTPUT_DIR/${PLUGIN_NAME}${LATEST_TAG}.zip"
+echo "[Info] Zip file created at $OUTPUT_FILE"

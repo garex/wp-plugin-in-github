@@ -27,9 +27,9 @@ PLUGINSLUG=${PWD##*/}                    # The name of the Plugin. By default th
 MAINFILE="$PLUGINSLUG.php"               # this should be the name of your main php file in the WordPress Plugin
 ASSETS_DIR="assets-wp-repo"              # the name of the assets directory that you are using
 POT_DIR="languages/"                     # name of your language file directory
-SVNUSER="sudar"                          # your svn username
+SVNUSER="ustimenko"                      # your svn username
 TMPDIR="/tmp"                            # temp directory path
-HISTORY_FILE="HISTORY.md"                # changelog/history file
+HISTORY_FILE="CHANGELOG.md"              # changelog/history file
 TMP_ADDON_DIR="tmp_addon"                # Temp folder where addon files will be stored
 EXTRA_FILES="../$PLUGINSLUG-*"           # Path to extra addon files
 PROCESS_EXTRA_FILES=false                # Whether to process extra files or not
@@ -46,6 +46,7 @@ I18N_PATH=$SCRIPT_DIR/../i18n
 
 # Readme converter
 README_CONVERTER=$SCRIPT_DIR/readme-converter.sh
+README_MD=`git ls-files | grep -i readme.md`
 
 # lifted this code from http://www.shelldorado.com/goodcoding/cmdargs.html
 while [ $# -gt 0 ]
@@ -76,6 +77,8 @@ SVNPATH="$TMPDIR/$PLUGINSLUG" # path to a temp SVN repo. No trailing slash requi
 SVNPATH_ASSETS="$TMPDIR/$PLUGINSLUG-assets" # path to a temp assets directory.
 SVNURL="http://plugins.svn.wordpress.org/$PLUGINSLUG/" # Remote SVN repo on wordpress.org
 
+#SVNURL="file:///home/ustimenko/projects/UstimenkoAlexander/wp-testing/plugins-svn-wordpress-org-repo/$PLUGINSLUG/" # Remote SVN repo on wordpress.org
+
 cd $GITPATH
 
 # Let's begin...
@@ -86,119 +89,11 @@ echo
 echo ".........................................."
 echo
 
-# Pull the latest changes from origin, to make sure we are using the latest code
-git pull origin master
-
-# Check version in readme.txt/md is the same as plugin file
-# if readme.md file is found, then use it
-README_MD=`find . -maxdepth 1 -iname "readme.md"`
-if [ -f "$README_MD" ]; then
-    echo "[Info] README.md file found: $README_MD"
-    NEWVERSION1=`awk -F' ' '/Stable tag:/{print $3}' $README_MD | tr -d '\r '`
-else
-    NEWVERSION1=`awk -F' ' '/Stable tag:/{print $3}' $GITPATH/readme.txt | tr -d '\r '`
-fi
-
-echo "[Info] readme.txt/md version: $NEWVERSION1"
-
-NEWVERSION2=`awk -F': ' '/^.*Version.*/{print $2}' $GITPATH/$MAINFILE | tr -d '\r'`
-echo "[Info] $MAINFILE version: $NEWVERSION2"
-
-if [ "$NEWVERSION1" != "$NEWVERSION2" ]; then echo "Version in readme.txt/md & $MAINFILE don't match. Exiting...."; exit 1; fi
-
-echo "[Info] Versions match in readme.txt/md and $MAINFILE. Let's proceed..."
-
-if git show-ref --tags --quiet --verify -- "refs/tags/$NEWVERSION1"
-	then
-		echo "Version $NEWVERSION1 already exists as git tag. Exiting....";
-		exit 1;
-	else
-		echo "[Info] Git version does not exist. Let's proceed..."
-fi
-
-# if unsaved changes are there the commit them.
-if ! git diff-index --quiet HEAD --; then
-    echo "[Info] Unsaved changes found. Committing them to git"
-    echo -e "Enter a commit message for unsaved changes: \c"
-    read COMMIT_MSG
-
-    git commit -am "$COMMIT_MSG"
-fi
-
-# Retrieve commit messages till the last tag
-git log `git describe --tags --abbrev=0`..HEAD --oneline > $TMPDIR/$COMMIT_MSG_FILE
-
-echo
-# the text domain used for translation
-TEXTDOMAIN=`awk -F': ' '/^.*Text Domain.*/{print $2}' $GITPATH/$MAINFILE | tr -d '\r'`
-if [ -z "$TEXTDOMAIN" ]; then
-    TEXTDOMAIN="$PLUGINSLUG"
-    echo "[Info] Text Domain not found in $MAINFILE. Assuming the '$PLUGINSLUG' as Text Domain"
-else
-    echo "[Info] Text Domain found in $MAINFILE: $TEXTDOMAIN"
-fi
-
-# The path the pot file has to be stored
-POT_DIR=`awk -F': ' '/^.*Domain Path.*/{print $2}' $GITPATH/$MAINFILE | tr -d '\r'`
-if [ -z "$POT_DIR" ]; then
-    echo "[Info] Text Domain path not found in $MAINFILE. Assuming the '$POT_DIR' as path"
-else
-    echo "[Info] Text Domain path found in $MAINFILE: '$POT_DIR'"
-fi
-
-# Copy extra files (from addons) so that they can be used for generating .pot file
-if $PROCESS_EXTRA_FILES ; then
-    if [ -d $GITPATH/$TMP_ADDON_DIR ]; then
-        echo "[Error] Extra files can't be processed if we have directory named $TMP_ADDON_DIR"
-        exit 1;
-    fi
-
-    mkdir $TMP_ADDON_DIR
-
-    echo "[Info] Copying all extra files from $EXTRA_FILES to '$TMP_ADDON_DIR'"
-    find $EXTRA_FILES -iname "*.php" -exec cp {} $TMP_ADDON_DIR \;
-fi
-
-# Do translation only if pot file is found
-if [ -f "${POT_DIR}${TEXTDOMAIN}.pot" ]; then
-    # Add textdomain to all php files
-    echo "[Info] Adding text domain to all PHP files"
-    find . -iname "*.php" -type f -print0 | xargs -0 -n1 php $I18N_PATH/add-textdomain.php -i $TEXTDOMAIN
-
-    # Regenerate pot file
-    echo "[Info] Regenerating pot file"
-    php $I18N_PATH/makepot.php wp-plugin . ${POT_DIR}${TEXTDOMAIN}.pot
-fi
-
-# Delete extra files
-if $PROCESS_EXTRA_FILES ; then
-    rm -rf $TMP_ADDON_DIR
-    echo "[Info] Removed $TMP_ADDON_DIR folder"
-fi
-
-# commit .pot file and textdomain changes
-DEFAULT_POT_COMMIT_MSG="Regenerate pot file for v$NEWVERSION1" # Default commit msg after generating a new pot file
-if ! git diff-index --quiet HEAD --; then
-    echo "[Info] Changes found, committing them to git"
-    echo -e "Enter a commit message (Default: $DEFAULT_POT_COMMIT_MSG) : \c"
-    read POT_COMMIT_MSG
-
-    if [ -z "$POT_COMMIT_MSG" ]; then
-        POT_COMMIT_MSG=$DEFAULT_POT_COMMIT_MSG
-    fi
-
-    git commit -am "$POT_COMMIT_MSG"
-fi
-
-echo
-# Tag new version
-echo "[Info] Tagging new version in git with $NEWVERSION1"
-git tag -a "$NEWVERSION1" -m "Tagging version $NEWVERSION1"
-
-# Push the latest version to github
-echo "[Info] Pushing latest commit to origin, with tags"
-git push origin master
-git push origin master --tags
+# Retrieve commit message of last tag
+# LAST_TAG=`git describe --tags --abbrev=0`
+LAST_TAG=`git tag -l | tail -n1`
+# git log --format=%B -n 1 $LAST_TAG > $TMPDIR/$COMMIT_MSG_FILE
+git cat-file -p $(git rev-parse $LAST_TAG) | tail -n +6 > $TMPDIR/$COMMIT_MSG_FILE
 
 echo
 # Process /assets directory
@@ -222,13 +117,27 @@ if [ -d $GITPATH/$ASSETS_DIR ]; then
         svn checkout $SVNURL/assets $SVNPATH_ASSETS
     fi
 
+	find $SVNPATH_ASSETS -type f -not -path '*.svn*' -delete
     cp $GITPATH/$ASSETS_DIR/* $SVNPATH_ASSETS # copy assets
     cd $SVNPATH_ASSETS # Switch to assets directory
 
+    svn status | grep "^!" > /dev/null 2>&1 # Check if deleted assests exists
+    if [ $? -eq 0 ]; then
+        svn status | grep "^!" | awk '{print $2}' | xargs svn delete # Remove new assets
+    fi
+
     svn status | grep "^?\|^M" > /dev/null 2>&1 # Check if new or updated assets exists
     if [ $? -eq 0 ]; then
-            svn status | grep "^?" | awk '{print $2}' | xargs svn add # Add new assets
-            # TODO: Delete files that have been removed from assets directory
+        svn status | grep "^?" | awk '{print $2}' | xargs svn add # Add new assets
+    fi
+
+	svn propset svn:mime-type image/jpeg *.jpg
+	svn propset svn:mime-type image/png *.png
+
+	svn status | egrep "^ ?(A|M|D)" > /dev/null 2>&1 # Check if we have somethign staged
+    if [ $? -eq 0 ]; then
+		    svn status | egrep "^ ?(A|M|D)"
+		    read -rsp $'[ .. ] Ready to commit assets. Press enter...\n'
             svn commit --username=$SVNUSER -m "Updated assets"
             echo "[Info] Assets committed to SVN."
         else
@@ -237,18 +146,22 @@ if [ -d $GITPATH/$ASSETS_DIR ]; then
 
     # Let's remove the assets directory in /tmp which is not needed any more
     rm -rf $SVNPATH_ASSETS
-
-    cd $GITPATH
 else
     echo "[Info] No assets directory found."
 fi
+
+cd $GITPATH
 
 echo
 echo "[Info] Creating local copy of SVN repo ..."
 svn co $SVNURL/trunk $SVNPATH
 
+echo "[Info] Checking out last tag"
+GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`
+git checkout $LAST_TAG
+
 echo "[Info] Exporting the HEAD of master from git to the trunk of SVN"
-git checkout-index -a -f --prefix=$SVNPATH/
+git checkout-index --all --force --prefix=$SVNPATH/
 
 echo "[Info] Ignoring github specific files and deployment script"
 # There is no simple way to exclude readme.md. http://stackoverflow.com/q/16066485/24949
@@ -257,6 +170,20 @@ svn propset svn:ignore "[Rr][Ee][Aa][Dd][Mm][Ee].[Mm][Dd]
 $HISTORY_FILE
 $ASSETS_DIR
 .gitignore" "$SVNPATH"
+
+# Addin vendors
+if [ -f composer.json ]; then
+    echo "[Info] Adding vendors files"
+
+    # Leave only needed vendor stuff
+    # composer install --no-dev --no-progress --dry-run | grep 'Nothing to install or update' > /dev/null || 
+    composer update
+    composer install --no-interaction --prefer-dist --no-dev
+
+    # Copy-paste
+    cd $GITPATH/vendor
+    tar cf - --exclude='.git' --exclude='.hg' . | (mkdir -p $SVNPATH/vendor && cd $SVNPATH/vendor && tar xvf - )
+fi
 
 echo "[Info] Changing directory to SVN and committing to trunk"
 cd $SVNPATH
@@ -278,30 +205,34 @@ if [ -f "$README_MD" ]; then
     $README_CONVERTER $README_MD readme.txt to-wp
 fi
 
-# TODO: Allow users to specify list of files to exclude.
-# TODO: Include files that are specified in git submodule.
-
-# TODO: Delete files from svn that have been removed
-
 # Add all new files that are not set to be ignored
 svn status | grep -v "^.[ \t]*\..*" | grep "^?" && svn status | grep -v "^.[ \t]*\..*" | grep "^?" | awk '{print $2}' | xargs svn add
 
 # Get aggregated commit msg and add comma in between them
-COMMIT_MSG=`cut -d' ' -f2- $TMPDIR/$COMMIT_MSG_FILE | sed -e '$ ! s/$/,/'`
+COMMIT_MSG=`cat $TMPDIR/$COMMIT_MSG_FILE`
 rm $TMPDIR/$COMMIT_MSG_FILE
 
-if [ -z "$COMMIT_MSG" ]; then
-    echo "[Info] Couldn't automatically get commit message."
-    echo -e "Enter a commit message : \c"
-    read COMMIT_MSG
-fi
-
+svn status | egrep "^ ?(A|M|D)"
+read -rsp $'[ .. ] Ready to commit to SVN. Press enter...\n'
 svn commit --username=$SVNUSER -m "$COMMIT_MSG"
 
 echo "[Info] Creating new SVN tag & committing it"
-svn copy . $SVNURL/tags/$NEWVERSION1/ -m "Tagging v$NEWVERSION1 for release"
+svn copy . $SVNURL/tags/$LAST_TAG/ -m "Tagging $LAST_TAG for release"
 
 echo "[Info] Removing temporary directory $SVNPATH"
 rm -fr $SVNPATH/
+
+echo "[Info] Checking our back to $GIT_BRANCH"
+cd $GITPATH
+git checkout $GIT_BRANCH
+
+# Revert vendors as it was
+if [ -f composer.json ]; then
+    echo "[Info] Revert vendors as it was"
+    cd $GITPATH
+
+    # Revert as it was
+    composer install --no-interaction --prefer-dist
+fi
 
 echo "[Info] Done"
