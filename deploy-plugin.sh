@@ -77,6 +77,9 @@ SVNPATH="$TMPDIR/$PLUGINSLUG" # path to a temp SVN repo. No trailing slash requi
 SVNPATH_ASSETS="$TMPDIR/$PLUGINSLUG-assets" # path to a temp assets directory.
 SVNURL="http://plugins.svn.wordpress.org/$PLUGINSLUG/" # Remote SVN repo on wordpress.org
 
+# removing local SVN path
+rm -rf $SVNPATH
+
 #SVNURL="file:///home/ustimenko/projects/UstimenkoAlexander/wp-testing/plugins-svn-wordpress-org-repo/$PLUGINSLUG/" # Remote SVN repo on wordpress.org
 
 cd $GITPATH
@@ -123,7 +126,7 @@ if [ -d $GITPATH/$ASSETS_DIR ]; then
 
     svn status | grep "^!" > /dev/null 2>&1 # Check if deleted assests exists
     if [ $? -eq 0 ]; then
-        svn status | grep "^!" | awk '{print $2}' | xargs svn delete # Remove new assets
+        svn status | grep "^!" | awk '{print $2}' | xargs svn delete # Remove deleted assets
     fi
 
     svn status | grep "^?\|^M" > /dev/null 2>&1 # Check if new or updated assets exists
@@ -156,12 +159,20 @@ echo
 echo "[Info] Creating local copy of SVN repo ..."
 svn co $SVNURL/trunk $SVNPATH
 
+echo "[Info] Merging SVN and GIT"
+cd $SVNPATH
+cp -r $GITPATH/.git .
+
 echo "[Info] Checking out last tag"
 GIT_BRANCH=`git rev-parse --abbrev-ref HEAD`
-git checkout $LAST_TAG
+git reset --hard $LAST_TAG
+cp $GITPATH/.gitignore .
+echo .svn >> .gitignore
+echo /vendor >> .gitignore
+echo /readme.txt >> .gitignore
 
-echo "[Info] Exporting the HEAD of master from git to the trunk of SVN"
-git checkout-index --all --force --prefix=$SVNPATH/
+echo "[Info] Removing deleted files (as they not tracked in git)"
+git ls-files --others --exclude-standard | xargs rm -rf
 
 echo "[Info] Ignoring github specific files and deployment script"
 # There is no simple way to exclude readme.md. http://stackoverflow.com/q/16066485/24949
@@ -169,6 +180,7 @@ svn propset svn:ignore "[Rr][Ee][Aa][Dd][Mm][Ee].[Mm][Dd]
 .git
 $HISTORY_FILE
 $ASSETS_DIR
+composer.lock
 .gitignore" "$SVNPATH"
 
 # Addin vendors
@@ -176,8 +188,8 @@ if [ -f composer.json ]; then
     echo "[Info] Adding vendors files"
 
     # Leave only needed vendor stuff
-    # composer install --no-dev --no-progress --dry-run | grep 'Nothing to install or update' > /dev/null || 
-    composer update
+    # composer install --no-dev --no-progress --dry-run | grep 'Nothing to install or update' > /dev/null ||
+    composer update --no-interaction --prefer-dist --no-dev
     composer install --no-interaction --prefer-dist --no-dev
 
     # Copy-paste
@@ -192,6 +204,9 @@ cd $SVNPATH
 if [ -d $ASSETS_DIR ]; then
     rm -rf $ASSETS_DIR
 fi
+
+echo "[Info] Remove development-only stuff"
+rm -rf db/sql languages/*.po tests tools vendor/bin phpunit.xml.dist
 
 # Merge History file
 if [ -f "$README_MD" ] && [ -f "$HISTORY_FILE" ]; then
@@ -208,11 +223,22 @@ fi
 # Add all new files that are not set to be ignored
 svn status | grep -v "^.[ \t]*\..*" | grep "^?" && svn status | grep -v "^.[ \t]*\..*" | grep "^?" | awk '{print $2}' | xargs svn add
 
+# Remove deleted files
+svn status | grep "^\!" > /dev/null 2>&1 # Check if deleted exists
+if [ $? -eq 0 ]; then
+    svn status | grep "^\!" | awk '{print $2}' | xargs svn delete # Remove deleted
+fi
+
+
 # Get aggregated commit msg and add comma in between them
 COMMIT_MSG=`cat $TMPDIR/$COMMIT_MSG_FILE`
 rm $TMPDIR/$COMMIT_MSG_FILE
 
+
+echo
+echo "[Info] Preview changes to be commited"
 svn status | egrep "^ ?(A|M|D)"
+
 read -rsp $'[ .. ] Ready to commit to SVN. Press enter...\n'
 svn commit --username=$SVNUSER -m "$COMMIT_MSG"
 
@@ -232,7 +258,7 @@ if [ -f composer.json ]; then
     cd $GITPATH
 
     # Revert as it was
-    composer install --no-interaction --prefer-dist
+    composer update --no-interaction --prefer-dist
 fi
 
 echo "[Info] Done"
