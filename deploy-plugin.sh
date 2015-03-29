@@ -94,7 +94,7 @@ echo
 
 # Retrieve commit message of last tag
 # LAST_TAG=`git describe --tags --abbrev=0`
-LAST_TAG=`git tag -l | tail -n1`
+LAST_TAG=`git tag -l | sort -V | tail -n1`
 # git log --format=%B -n 1 $LAST_TAG > $TMPDIR/$COMMIT_MSG_FILE
 git cat-file -p $(git rev-parse $LAST_TAG) | tail -n +6 > $TMPDIR/$COMMIT_MSG_FILE
 
@@ -186,7 +186,7 @@ composer.lock
 # Addin vendors
 if [ -f composer.json ]; then
     echo "[Info] Adding vendors files"
-
+	cd $GITPATH
     # Leave only needed vendor stuff
     # composer install --no-dev --no-progress --dry-run | grep 'Nothing to install or update' > /dev/null ||
     composer update --no-interaction --prefer-dist --no-dev
@@ -194,7 +194,14 @@ if [ -f composer.json ]; then
 
     # Copy-paste
     cd $GITPATH/vendor
+    if [ ! -f deploy-plugin.sh ]; then
+        echo "File not found!"
+        exit 2
+    fi
+    . deploy-plugin.sh
+    mv ./deploy-plugin.sh /tmp
     tar cf - --exclude='.git' --exclude='.hg' . | (mkdir -p $SVNPATH/vendor && cd $SVNPATH/vendor && tar xvf - )
+    mv /tmp/deploy-plugin.sh $GITPATH/vendor
 fi
 
 echo "[Info] Changing directory to SVN and committing to trunk"
