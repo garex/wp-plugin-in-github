@@ -22,6 +22,8 @@
 #       https://github.com/ocean90/svn2git-tools/
 ################################################################################
 
+# set -e
+
 # default configurations
 PLUGINSLUG=${PWD##*/}                    # The name of the Plugin. By default the directory name is used
 MAINFILE="$PLUGINSLUG.php"               # this should be the name of your main php file in the WordPress Plugin
@@ -93,9 +95,7 @@ echo ".........................................."
 echo
 
 # Retrieve commit message of last tag
-# LAST_TAG=`git describe --tags --abbrev=0`
 LAST_TAG=`git tag -l | sort -V | tail -n1`
-# git log --format=%B -n 1 $LAST_TAG > $TMPDIR/$COMMIT_MSG_FILE
 git cat-file -p $(git rev-parse $LAST_TAG) | tail -n +6 > $TMPDIR/$COMMIT_MSG_FILE
 
 echo
@@ -186,34 +186,20 @@ composer.lock
 # Addin vendors
 if [ -f composer.json ]; then
     echo "[Info] Adding vendors files"
-	cd $GITPATH
-    # Leave only needed vendor stuff
-    # composer install --no-dev --no-progress --dry-run | grep 'Nothing to install or update' > /dev/null ||
-    composer update --no-interaction --prefer-dist --no-dev
-    composer install --no-interaction --prefer-dist --no-dev
-
-    # Copy-paste
-    cd $GITPATH/vendor
-    if [ ! -f deploy-plugin.sh ]; then
-        echo "File not found!"
-        exit 2
-    fi
-    . deploy-plugin.sh
-    mv ./deploy-plugin.sh /tmp
-    tar cf - --exclude='.git' --exclude='.hg' . | (mkdir -p $SVNPATH/vendor && cd $SVNPATH/vendor && tar xvf - )
-    mv /tmp/deploy-plugin.sh $GITPATH/vendor
+    ln --symbolic composer.lock.dist composer.lock
+    composer install --no-ansi --no-dev --no-interaction --no-progress --optimize-autoloader --prefer-dist
 fi
 
 echo "[Info] Changing directory to SVN and committing to trunk"
 cd $SVNPATH
 
-# remove assets directory if found
+# Remove assets directory if found
 if [ -d $ASSETS_DIR ]; then
     rm -rf $ASSETS_DIR
 fi
 
 echo "[Info] Remove development-only stuff"
-rm -rf db/sql languages/*.po tests tools vendor/bin phpunit.xml.dist
+rm -rf db/sql languages/*.po tests tools vendor/bin *.dist
 
 # Merge History file
 if [ -f "$README_MD" ] && [ -f "$HISTORY_FILE" ]; then
@@ -241,7 +227,6 @@ fi
 COMMIT_MSG=`cat $TMPDIR/$COMMIT_MSG_FILE`
 rm $TMPDIR/$COMMIT_MSG_FILE
 
-
 echo
 echo "[Info] Preview changes to be commited"
 svn status | egrep "^ ?(A|M|D)"
@@ -259,13 +244,5 @@ echo "[Info] Checking our back to $GIT_BRANCH"
 cd $GITPATH
 git checkout $GIT_BRANCH
 
-# Revert vendors as it was
-if [ -f composer.json ]; then
-    echo "[Info] Revert vendors as it was"
-    cd $GITPATH
-
-    # Revert as it was
-    composer update --no-interaction --prefer-dist
-fi
-
 echo "[Info] Done"
+
