@@ -105,6 +105,7 @@ markdowntowp () {
     for m in "${PLUGINMETA[@]}"
     do
         _sed 's/^(\*\*|__)'"$m"':(\*\*|__)/'"$m"':/g' $2
+        perl -i.bak -0pe 's/\n(\n'"$m"':)/$1/s' $2 && rm *.bak
     done
 
     _sed "s/###([^#]+)###/=\1=/g" $2

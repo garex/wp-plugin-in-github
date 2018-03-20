@@ -187,7 +187,9 @@ composer.lock
 if [ -f composer.json ]; then
     echo "[Info] Adding vendors files"
     ln --symbolic composer.lock.dist composer.lock
+    rm -rf vendor/flourish/flourish
     composer install --no-ansi --no-dev --no-interaction --no-progress --optimize-autoloader --prefer-dist
+    rm -f vendor/composer/autoload_static.php
 fi
 
 echo "[Info] Changing directory to SVN and committing to trunk"
@@ -245,4 +247,3 @@ cd $GITPATH
 git checkout $GIT_BRANCH
 
 echo "[Info] Done"
-
